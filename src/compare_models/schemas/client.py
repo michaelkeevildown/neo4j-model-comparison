@@ -1,6 +1,6 @@
 from neo4j import GraphDatabase
 from ..common.config import settings
-from ..common.models import GraphSchema, Node, Relationship, PropertyDefinition, Path
+from ..common.models import GraphSchema, Node, Relationship, PropertyDefinition, Path, Constraint, Index
 
 
 def get_graph_schema() -> GraphSchema:
@@ -99,17 +99,16 @@ def get_graph_schema() -> GraphSchema:
     # Create nodes from the grouped data
     nodes = []
     for primary_label, group_data in node_groups.items():
-        # Remove duplicates from indexes and constraints
-        unique_indexes = list(dict.fromkeys(group_data["indexes"]))
-        unique_constraints = list(dict.fromkeys(group_data["constraints"]))
+        # For now, use empty lists for constraints and indexes
+        # TODO: Implement proper constraint/index extraction from Neo4j schema procedures
         
         nodes.append(
             Node(
                 cypher_representation=group_data["cypher_representation"],
                 label=group_data["primary_label"],
                 additional_labels=group_data["additional_labels"],
-                indexes=unique_indexes,
-                constraints=unique_constraints,
+                indexes=[],  # Empty list of Index objects
+                constraints=[],  # Empty list of Constraint objects
                 properties=group_data["properties"],
             )
         )

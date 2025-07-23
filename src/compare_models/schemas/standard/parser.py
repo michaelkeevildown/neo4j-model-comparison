@@ -1,7 +1,7 @@
 import re
 from typing import List, Dict, Optional, Tuple
 import requests
-from ...common.models import GraphSchema, Node, Relationship, PropertyDefinition, Path
+from ...common.models import GraphSchema, Node, Relationship, PropertyDefinition, Path, Constraint, Index
 
 
 def fetch_markdown_content(url: str) -> str:
@@ -231,7 +231,7 @@ def parse_relationship_section(content: str) -> List[Relationship]:
     return relationships
 
 
-def parse_constraints_section(content: str) -> Dict[str, List[str]]:
+def parse_constraints_section(content: str) -> Dict[str, List[Constraint]]:
     """Parse the constraints section and return a dict mapping labels to constraints."""
     constraints_by_label = {}
     lines = content.split('\n')
@@ -261,6 +261,10 @@ def parse_constraints_section(content: str) -> Dict[str, List[str]]:
                 full_statement += ' ' + lines[j].strip()
             
             # Now parse the complete statement
+            # Extract constraint name
+            name_match = re.search(r'CREATE CONSTRAINT\s+(\w+)', full_statement)
+            constraint_name = name_match.group(1) if name_match else None
+            
             # Extract label from FOR (x:Label) pattern
             label_match = re.search(r'FOR\s*\([^:]+:([^)]+)\)', full_statement)
             if label_match:
@@ -281,12 +285,17 @@ def parse_constraints_section(content: str) -> Dict[str, List[str]]:
                         props_str = re.sub(r'\)$', '', props_str)
                         props_str = re.sub(r'[a-z]+\.', '', props_str)  # Remove alias like 'c.'
                         
-                        # Handle composite keys
+                        # Parse properties
                         if ',' in props_str:
-                            props = [p.strip() for p in props_str.split(',')]
-                            constraint = f"NODE KEY ({', '.join(props)})"
+                            properties = [p.strip() for p in props_str.split(',')]
                         else:
-                            constraint = f"NODE KEY ({props_str.strip()})"
+                            properties = [props_str.strip()]
+                        
+                        constraint = Constraint(
+                            type="NODE_KEY",
+                            properties=properties,
+                            name=constraint_name
+                        )
                         
                         constraints_by_label[label].append(constraint)
             
@@ -298,7 +307,7 @@ def parse_constraints_section(content: str) -> Dict[str, List[str]]:
     return constraints_by_label
 
 
-def parse_indexes_section(content: str) -> Dict[str, List[str]]:
+def parse_indexes_section(content: str) -> Dict[str, List[Index]]:
     """Parse the indexes section and return a dict mapping labels to indexes."""
     indexes_by_label = {}
     lines = content.split('\n')
@@ -308,7 +317,7 @@ def parse_indexes_section(content: str) -> Dict[str, List[str]]:
         line = lines[i].strip()
         
         # Skip empty lines and pure comments
-        if not line or line == '//':  # Changed from startswith('//') to exact match
+        if not line or line == '//':
             i += 1
             continue
             
@@ -319,6 +328,10 @@ def parse_indexes_section(content: str) -> Dict[str, List[str]]:
             
         # Parse CREATE INDEX statements
         if 'CREATE INDEX' in line and 'FOR' in line:
+            # Extract index name
+            name_match = re.search(r'CREATE INDEX\s+(\w+)', line)
+            index_name = name_match.group(1) if name_match else None
+            
             # Extract label from FOR (x:Label) pattern
             label_match = re.search(r'FOR\s*\([^:]+:([^)]+)\)', line)
             if label_match:
@@ -334,10 +347,20 @@ def parse_indexes_section(content: str) -> Dict[str, List[str]]:
                     prop = on_match.group(1).strip()
                     # Remove alias prefix (e.g., 't.date' -> 'date')
                     prop = re.sub(r'^[a-z]+\.', '', prop)
-                    indexes_by_label[label].append(f"INDEX ({prop})")
+                    
+                    index = Index(
+                        type="PROPERTY",
+                        properties=[prop],
+                        name=index_name
+                    )
+                    indexes_by_label[label].append(index)
         
         # Parse FULLTEXT INDEX statements
         elif 'CREATE FULLTEXT INDEX' in line and 'FOR' in line:
+            # Extract index name
+            name_match = re.search(r'CREATE FULLTEXT INDEX\s+(\w+)', line)
+            index_name = name_match.group(1) if name_match else None
+            
             label_match = re.search(r'FOR\s*\([^:]+:([^)]+)\)', line)
             if label_match:
                 label = label_match.group(1).strip()
@@ -349,22 +372,53 @@ def parse_indexes_section(content: str) -> Dict[str, List[str]]:
                 on_each_match = re.search(r'ON EACH\s*\[([^\]]+)\]', line)
                 if on_each_match:
                     props_str = on_each_match.group(1)
-                    # Remove alias prefixes
-                    props = [re.sub(r'^[a-z]+\.', '', p.strip()) for p in props_str.split(',')]
-                    indexes_by_label[label].append(f"FULLTEXT INDEX ({', '.join(props)})")
+                    # Remove alias prefixes and clean property names
+                    props = [re.sub(r'^[a-z]+\.', '', p.strip().strip("'\"")) for p in props_str.split(',')]
+                    
+                    index = Index(
+                        type="FULLTEXT",
+                        properties=props,
+                        name=index_name
+                    )
+                    indexes_by_label[label].append(index)
         
         # Parse vector index (multi-line CALL statement)
         elif line.startswith('CALL db.index.vector.createNodeIndex'):
-            # Look ahead to find label and property
-            if i + 4 < len(lines):
-                # Vector index spans multiple lines
-                label_line = lines[i + 2].strip().strip(',').strip("'")
-                prop_line = lines[i + 3].strip().strip(',').strip("'")
+            # Look ahead to find all parameters
+            if i + 5 < len(lines):
+                # Extract index name (first parameter)
+                name_line = lines[i + 1].strip().strip(',').strip("'\"")
+                # Extract label (second parameter)
+                label_line = lines[i + 2].strip().strip(',').strip("'\"")
+                # Extract property (third parameter) 
+                prop_line = lines[i + 3].strip().strip(',').strip("'\"")
+                # Extract dimensions (fourth parameter)
+                dim_line = lines[i + 4].strip().strip(',')
+                # Extract similarity metric (fifth parameter)
+                similarity_line = lines[i + 5].strip().strip(',').strip("'\"").rstrip(')').split('//')[0].strip().strip("'\")")
                 
                 if label_line not in indexes_by_label:
                     indexes_by_label[label_line] = []
                 
-                indexes_by_label[label_line].append(f"VECTOR INDEX ({prop_line})")
+                # Parse dimensions as integer
+                try:
+                    dimensions = int(dim_line)
+                except ValueError:
+                    dimensions = None
+                
+                config = {}
+                if dimensions:
+                    config["dimensions"] = dimensions
+                if similarity_line:
+                    config["similarity"] = similarity_line
+                
+                index = Index(
+                    type="VECTOR",
+                    properties=[prop_line],
+                    name=name_line,
+                    config=config if config else None
+                )
+                indexes_by_label[label_line].append(index)
                 i += 6  # Skip the entire CALL block
                 continue
         

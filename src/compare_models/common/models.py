@@ -11,6 +11,7 @@ class PropertyDefinition(BaseModel):
 class Node(BaseModel):
     cypher_representation: str
     label: str
+    additional_labels: List[str] = []  # Additional labels that can be applied to this node
     indexes: List[str]
     constraints: List[str]
     properties: List[PropertyDefinition]

@@ -231,6 +231,148 @@ def parse_relationship_section(content: str) -> List[Relationship]:
     return relationships
 
 
+def parse_constraints_section(content: str) -> Dict[str, List[str]]:
+    """Parse the constraints section and return a dict mapping labels to constraints."""
+    constraints_by_label = {}
+    lines = content.split('\n')
+    
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        
+        # Skip empty lines, comments, and code block markers
+        if not line or line.startswith('//') or line == '```cypher' or line == '```':
+            i += 1
+            continue
+        
+        # Check if this line starts a CREATE CONSTRAINT statement
+        if line.startswith('CREATE CONSTRAINT'):
+            # Constraints can span multiple lines, so collect the full statement
+            full_statement = line
+            
+            # Look ahead to get the complete statement
+            j = i + 1
+            while j < len(lines) and not lines[j].strip().endswith(';'):
+                full_statement += ' ' + lines[j].strip()
+                j += 1
+            
+            # Add the final line with semicolon
+            if j < len(lines):
+                full_statement += ' ' + lines[j].strip()
+            
+            # Now parse the complete statement
+            # Extract label from FOR (x:Label) pattern
+            label_match = re.search(r'FOR\s*\([^:]+:([^)]+)\)', full_statement)
+            if label_match:
+                label = label_match.group(1).strip()
+                
+                # Initialize list for this label if needed
+                if label not in constraints_by_label:
+                    constraints_by_label[label] = []
+                
+                # Extract constraint details
+                if 'IS NODE KEY' in full_statement:
+                    # Extract properties from REQUIRE clause
+                    require_match = re.search(r'REQUIRE\s+(.+?)\s+IS NODE KEY', full_statement)
+                    if require_match:
+                        props_str = require_match.group(1)
+                        # Remove parentheses and node alias
+                        props_str = re.sub(r'^\(', '', props_str)
+                        props_str = re.sub(r'\)$', '', props_str)
+                        props_str = re.sub(r'[a-z]+\.', '', props_str)  # Remove alias like 'c.'
+                        
+                        # Handle composite keys
+                        if ',' in props_str:
+                            props = [p.strip() for p in props_str.split(',')]
+                            constraint = f"NODE KEY ({', '.join(props)})"
+                        else:
+                            constraint = f"NODE KEY ({props_str.strip()})"
+                        
+                        constraints_by_label[label].append(constraint)
+            
+            # Skip to the next statement
+            i = j + 1
+        else:
+            i += 1
+    
+    return constraints_by_label
+
+
+def parse_indexes_section(content: str) -> Dict[str, List[str]]:
+    """Parse the indexes section and return a dict mapping labels to indexes."""
+    indexes_by_label = {}
+    lines = content.split('\n')
+    
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        
+        # Skip empty lines and pure comments
+        if not line or line == '//':  # Changed from startswith('//') to exact match
+            i += 1
+            continue
+            
+        # Skip code block markers
+        if line == '```cypher' or line == '```':
+            i += 1
+            continue
+            
+        # Parse CREATE INDEX statements
+        if 'CREATE INDEX' in line and 'FOR' in line:
+            # Extract label from FOR (x:Label) pattern
+            label_match = re.search(r'FOR\s*\([^:]+:([^)]+)\)', line)
+            if label_match:
+                label = label_match.group(1).strip()
+                
+                # Initialize list for this label if needed
+                if label not in indexes_by_label:
+                    indexes_by_label[label] = []
+                
+                # Check for regular property index
+                on_match = re.search(r'ON\s*\(([^)]+)\)', line)
+                if on_match:
+                    prop = on_match.group(1).strip()
+                    # Remove alias prefix (e.g., 't.date' -> 'date')
+                    prop = re.sub(r'^[a-z]+\.', '', prop)
+                    indexes_by_label[label].append(f"INDEX ({prop})")
+        
+        # Parse FULLTEXT INDEX statements
+        elif 'CREATE FULLTEXT INDEX' in line and 'FOR' in line:
+            label_match = re.search(r'FOR\s*\([^:]+:([^)]+)\)', line)
+            if label_match:
+                label = label_match.group(1).strip()
+                
+                if label not in indexes_by_label:
+                    indexes_by_label[label] = []
+                
+                # Extract properties from ON EACH clause
+                on_each_match = re.search(r'ON EACH\s*\[([^\]]+)\]', line)
+                if on_each_match:
+                    props_str = on_each_match.group(1)
+                    # Remove alias prefixes
+                    props = [re.sub(r'^[a-z]+\.', '', p.strip()) for p in props_str.split(',')]
+                    indexes_by_label[label].append(f"FULLTEXT INDEX ({', '.join(props)})")
+        
+        # Parse vector index (multi-line CALL statement)
+        elif line.startswith('CALL db.index.vector.createNodeIndex'):
+            # Look ahead to find label and property
+            if i + 4 < len(lines):
+                # Vector index spans multiple lines
+                label_line = lines[i + 2].strip().strip(',').strip("'")
+                prop_line = lines[i + 3].strip().strip(',').strip("'")
+                
+                if label_line not in indexes_by_label:
+                    indexes_by_label[label_line] = []
+                
+                indexes_by_label[label_line].append(f"VECTOR INDEX ({prop_line})")
+                i += 6  # Skip the entire CALL block
+                continue
+        
+        i += 1
+    
+    return indexes_by_label
+
+
 def parse_standard_schema(markdown_content: str) -> GraphSchema:
     """Parse the standard schema from the markdown content."""
     # Extract section 1 (Node Labels and Properties)
@@ -247,14 +389,39 @@ def parse_standard_schema(markdown_content: str) -> GraphSchema:
         re.DOTALL
     )
     
+    # Extract section 3 (Constraints and Indexes)
+    constraints_section_match = re.search(
+        r'## 3\. Constraints and Indexes\n(.*?)(?=## 4\.|## Demo|$)', 
+        markdown_content, 
+        re.DOTALL
+    )
+    
     nodes = []
     relationships = []
+    constraints_by_label = {}
+    indexes_by_label = {}
     
     if node_section_match:
         nodes = parse_node_section(node_section_match.group(1))
     
     if rel_section_match:
         relationships = parse_relationship_section(rel_section_match.group(1))
+    
+    if constraints_section_match:
+        # Parse constraints and indexes from section 3
+        section_content = constraints_section_match.group(1)
+        constraints_by_label = parse_constraints_section(section_content)
+        indexes_by_label = parse_indexes_section(section_content)
+    
+    # Map constraints and indexes to nodes
+    for node in nodes:
+        # Add constraints for this node's label
+        if node.label in constraints_by_label:
+            node.constraints = constraints_by_label[node.label]
+        
+        # Add indexes for this node's label
+        if node.label in indexes_by_label:
+            node.indexes = indexes_by_label[node.label]
     
     # Merge duplicate relationships with same type but different paths
     merged_relationships = {}

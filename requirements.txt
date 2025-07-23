@@ -1,0 +1,5 @@
+neo4j
+pydantic
+pydantic-settings
+python-dotenv
+mypy

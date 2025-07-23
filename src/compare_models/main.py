@@ -2,7 +2,6 @@ import json
 import logging
 from .schemas.client import get_graph_schema
 from .core.comparator import compare_schemas
-from .core.reporting import generate_report
 from .schemas.standard.transactions import get_standard_schema
 
 
@@ -26,10 +25,12 @@ def main():
     print("\nSchema comparison results:")
     print(json.dumps(comparison_results, indent=2))
 
-    # 4. Generate a compliance report
-    report = generate_report(comparison_results)
-    print("\nCompliance Report:")
-    print(report)
+    # 4. Display basic results summary
+    print(f"\nCompliance Summary:")
+    print(f"Overall Score: {comparison_results['summary']['overall_compliance_score']:.1%}")
+    print(f"Compliance Level: {comparison_results['compliance_level'].upper()}")
+    print(f"Matched Nodes: {comparison_results['summary']['matched_nodes']}/{comparison_results['summary']['total_customer_nodes']}")
+    print(f"Matched Relationships: {comparison_results['summary']['matched_relationships']}/{comparison_results['summary']['total_customer_relationships']}")
 
 
 if __name__ == "__main__":

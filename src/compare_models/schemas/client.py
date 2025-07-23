@@ -15,6 +15,8 @@ def get_graph_schema() -> GraphSchema:
             rel_properties_result = session.run(
                 "CALL db.schema.relTypeProperties()"
             ).data()
+            constraints_result = session.run("SHOW CONSTRAINTS").data()
+            indexes_result = session.run("SHOW INDEXES").data()
 
     payload = schema_result[0]
     nodes_data = payload.get("nodes", [])
@@ -96,19 +98,121 @@ def get_graph_schema() -> GraphSchema:
             }
             processed_single_labels.add(label)
     
+    # Process constraints from SHOW CONSTRAINTS
+    constraints_by_label = {}
+    for constraint in constraints_result:
+        # Extract labels from constraint definition
+        labels = constraint.get("labelsOrTypes", []) or []
+        constraint_type = constraint.get("type", "")
+        constraint_name = constraint.get("name", "")
+        properties = constraint.get("properties", []) or []
+        
+        # Handle different constraint types
+        if constraint_type == "NODE_KEY":
+            constraint_obj = Constraint(
+                type="NODE_KEY",
+                properties=properties,
+                name=constraint_name
+            )
+        elif constraint_type == "UNIQUENESS":
+            constraint_obj = Constraint(
+                type="UNIQUE",
+                properties=properties,
+                name=constraint_name
+            )
+        else:
+            # Handle other constraint types
+            constraint_obj = Constraint(
+                type=constraint_type,
+                properties=properties,
+                name=constraint_name
+            )
+        
+        # Map to all labels involved
+        for label in labels:
+            if label not in constraints_by_label:
+                constraints_by_label[label] = []
+            constraints_by_label[label].append(constraint_obj)
+    
+    # Process indexes from SHOW INDEXES
+    indexes_by_label = {}
+    for index in indexes_result:
+        # Skip system indexes
+        if index.get("name", "").startswith("system."):
+            continue
+            
+        labels = index.get("labelsOrTypes", []) or []
+        index_type = index.get("type", "")
+        index_name = index.get("name", "")
+        properties = index.get("properties", []) or []
+        
+        # Map Neo4j index types to our types
+        if index_type == "FULLTEXT":
+            mapped_type = "FULLTEXT"
+        elif index_type == "VECTOR":
+            mapped_type = "VECTOR"
+        elif index_type in ["BTREE", "RANGE"]:
+            mapped_type = "PROPERTY"
+        else:
+            mapped_type = index_type
+        
+        # Extract configuration if available
+        config = {}
+        if index_type == "FULLTEXT":
+            # Fulltext indexes might have analyzer configuration
+            if "analyzer" in index:
+                config["analyzer"] = index["analyzer"]
+        elif index_type == "VECTOR":
+            # Vector indexes have dimensions and similarity
+            if "dimensions" in index:
+                config["dimensions"] = index["dimensions"]
+            if "similarity" in index:
+                config["similarity"] = index["similarity"]
+        
+        index_obj = Index(
+            type=mapped_type,
+            properties=properties,           
+            name=index_name,
+            config=config if config else None
+        )
+        
+        # Map to all labels involved
+        for label in labels:
+            if label not in indexes_by_label:
+                indexes_by_label[label] = []
+            indexes_by_label[label].append(index_obj)
+    
     # Create nodes from the grouped data
     nodes = []
     for primary_label, group_data in node_groups.items():
-        # For now, use empty lists for constraints and indexes
-        # TODO: Implement proper constraint/index extraction from Neo4j schema procedures
+        # Get constraints and indexes for this node label
+        node_constraints = constraints_by_label.get(primary_label, [])
+        node_indexes = indexes_by_label.get(primary_label, [])
+        
+        # Also check additional labels for multi-label nodes
+        for additional_label in group_data["additional_labels"]:
+            node_constraints.extend(constraints_by_label.get(additional_label, []))
+            node_indexes.extend(indexes_by_label.get(additional_label, []))
+        
+        # Remove duplicates while preserving order
+        unique_constraints = []
+        unique_indexes = []
+        
+        for constraint in node_constraints:
+            if constraint not in unique_constraints:
+                unique_constraints.append(constraint)
+                
+        for index in node_indexes:
+            if index not in unique_indexes:
+                unique_indexes.append(index)
         
         nodes.append(
             Node(
                 cypher_representation=group_data["cypher_representation"],
                 label=group_data["primary_label"],
                 additional_labels=group_data["additional_labels"],
-                indexes=[],  # Empty list of Index objects
-                constraints=[],  # Empty list of Constraint objects
+                indexes=unique_indexes,
+                constraints=unique_constraints,
                 properties=group_data["properties"],
             )
         )

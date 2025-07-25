@@ -54,6 +54,8 @@ Every time you run it, you're comparing against the latest official standard. No
 
 ## 🚀 Quick Start
 
+### Option 1: Beautiful CLI Interface (Recommended) 🎨
+
 ```bash
 # 1. Setup
 git clone <repo>
@@ -61,12 +63,33 @@ cd compare-models
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 
-# 2. Config
+# 2. For Neo4j Aura users (drag-and-drop credentials!)
+python cli/main.py compare --aura-file /path/to/Neo4j-credentials.txt
+
+# 3. Interactive database selection
+python cli/main.py compare --aura-file credentials.txt
+# → Shows all databases → Interactive selection → Beautiful results
+
+# 4. Direct connection
+python cli/main.py compare --uri neo4j://localhost:7687 --username neo4j --password password
+```
+
+### Option 2: Programmatic Usage
+
+```bash
+# 1. Setup environment
 cp .env.example .env
 # Edit .env with your Neo4j credentials
 
-# 3. Compare your schema
+# 2. Run basic comparison
 python -m src.compare_models.main
+
+# 3. Or use the orchestrator directly
+python -c "
+from src.compare_models.orchestrator import quick_compare
+results = quick_compare(standard_name='transactions', similarity_threshold=0.7)
+print(f'Compliance Score: {results['summary']['overall_compliance_score']:.1%}')
+"
 ```
 
 ## 💎 What You Get

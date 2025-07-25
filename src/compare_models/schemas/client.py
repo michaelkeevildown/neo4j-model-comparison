@@ -1,11 +1,16 @@
-from neo4j import GraphDatabase
+from neo4j import GraphDatabase, NotificationMinimumSeverity
 from ..common.config import settings
 from ..common.models import GraphSchema, Node, Relationship, PropertyDefinition, Path, Constraint, Index
 
 
 def get_graph_schema() -> GraphSchema:
+    # Suppress Neo4j warnings about propertyTypes field format changes in future versions
+    # The warnings are about db.schema.nodeTypeProperties() and db.schema.relTypeProperties()
+    # procedures changing their propertyTypes field output format in the next major version
     with GraphDatabase.driver(
-        settings.uri, auth=(settings.username, settings.password)
+        settings.uri, 
+        auth=(settings.username, settings.password),
+        notifications_min_severity=NotificationMinimumSeverity.OFF
     ) as driver:
         with driver.session(database=settings.database) as session:
             schema_result = session.run("call db.schema.visualization()").data()

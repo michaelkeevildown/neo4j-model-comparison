@@ -273,18 +273,18 @@ def format_node_renames_table(renames: List[Dict]) -> Table:
     """
     table = Table(title="Node Label Changes Required")
     
-    table.add_column("Current Label", style="cyan", width=25)
+    table.add_column("Current Label", style="bright_yellow", width=25)
     table.add_column("", style="dim", width=3)
-    table.add_column("Standard Label", style="green", width=25)
+    table.add_column("Standard Label", style="bright_blue", width=25)
     table.add_column("Priority", style="bold", width=10)
-    table.add_column("Cypher Command", style="blue", width=60)
+    table.add_column("Cypher Command", style="bright_magenta", width=60)
     
     for rename in renames:
         priority_color = {
-            'CRITICAL': 'red',
-            'HIGH': 'yellow',
-            'MEDIUM': 'blue',
-            'LOW': 'dim'
+            'CRITICAL': 'bright_red',
+            'HIGH': 'bright_yellow',
+            'MEDIUM': 'bright_cyan',
+            'LOW': 'bright_white'
         }.get(rename['priority'], 'white')
         
         table.add_row(
@@ -310,32 +310,26 @@ def format_relationship_renames_table(renames: List[Dict]) -> Table:
     """
     table = Table(title="Relationship Type Changes Required")
     
-    table.add_column("Current Type", style="cyan", width=25)
+    table.add_column("#", style="bright_white", width=3)
+    table.add_column("Current Type", style="bright_yellow", width=25)
     table.add_column("", style="dim", width=3)
-    table.add_column("Standard Type", style="green", width=25)
+    table.add_column("Standard Type", style="bright_blue", width=25)
     table.add_column("Priority", style="bold", width=10)
-    table.add_column("Cypher Command", style="blue", width=60)
     
-    for rename in renames:
+    for i, rename in enumerate(renames, 1):
         priority_color = {
-            'CRITICAL': 'red',
-            'HIGH': 'yellow',
-            'MEDIUM': 'blue',
-            'LOW': 'dim'
+            'CRITICAL': 'bright_red',
+            'HIGH': 'bright_yellow',
+            'MEDIUM': 'bright_cyan',
+            'LOW': 'bright_white'
         }.get(rename['priority'], 'white')
         
-        # Truncate long Cypher commands for display
-        cypher_lines = rename['cypher_command'].split('\n')
-        cypher_display = cypher_lines[0] if cypher_lines else rename['cypher_command']
-        if len(cypher_lines) > 1:
-            cypher_display += " ..."
-        
         table.add_row(
+            str(i),
             rename['current_type'],
             StatusIndicators.ARROW,
             rename['standard_type'],
-            f"[{priority_color}]{rename['priority']}[/{priority_color}]",
-            cypher_display
+            f"[{priority_color}]{rename['priority']}[/{priority_color}]"
         )
     
     return table
@@ -353,20 +347,25 @@ def format_property_renames_table(renames: List[Dict]) -> Table:
     """
     table = Table(title="Property Name Changes Required")
     
-    table.add_column("Element Type", style="dim", width=12)
-    table.add_column("Element Name", style="cyan", width=20)
-    table.add_column("Current Property", style="red", width=25)
+    table.add_column("Element", style="bright_white", width=10)
+    table.add_column("Name", style="bright_cyan", width=15)
+    table.add_column("Current", style="bright_yellow", width=18)
     table.add_column("", style="dim", width=3)
-    table.add_column("Standard Property", style="green", width=25)
-    table.add_column("Priority", style="bold", width=10)
+    table.add_column("Standard", style="bright_blue", width=18)
+    table.add_column("Priority", style="bold", width=8)
+    table.add_column("Cypher Command", style="bright_magenta", width=90)
     
     for rename in renames:
         priority_color = {
-            'CRITICAL': 'red',
-            'HIGH': 'yellow',
-            'MEDIUM': 'blue',
-            'LOW': 'dim'
+            'CRITICAL': 'bright_red',
+            'HIGH': 'bright_yellow',
+            'MEDIUM': 'bright_cyan',
+            'LOW': 'bright_white'
         }.get(rename['priority'], 'white')
+        
+        priority_display = rename['priority']
+        if len(priority_display) > 6:
+            priority_display = priority_display[:6]
         
         table.add_row(
             rename['element_type'],
@@ -374,7 +373,8 @@ def format_property_renames_table(renames: List[Dict]) -> Table:
             rename['current_property'],
             StatusIndicators.ARROW,
             rename['standard_property'],
-            f"[{priority_color}]{rename['priority']}[/{priority_color}]"
+            f"[{priority_color}]{priority_display}[/{priority_color}]",
+            rename.get('cypher_command', '')
         )
     
     return table
@@ -390,15 +390,16 @@ def format_missing_indexes_table(indexes: List[Dict]) -> Table:
     Returns:
         Rich Table with missing indexes
     """
-    table = Table(title="Missing Indexes")
+    # Create table with reference numbers for commands
+    table = Table(title="Missing Indexes (Execute After Node Renames)", show_lines=True)
     
-    table.add_column("Element Label", style="cyan", width=25)
-    table.add_column("Index Type", style="blue", width=15)
-    table.add_column("Properties", style="green", width=30)
-    table.add_column("Priority", style="bold", width=10)
-    table.add_column("Cypher Command", style="blue", width=50)
+    table.add_column("#", style="bright_white", width=3)
+    table.add_column("Index Type", style="bright_cyan", width=10)
+    table.add_column("Label", style="bright_blue", width=15)
+    table.add_column("Properties", style="bright_magenta", no_wrap=False)
+    table.add_column("Priority", style="bold", width=8)
     
-    for index in indexes:
+    for i, index in enumerate(indexes, 1):
         priority_color = {
             'CRITICAL': 'red',
             'HIGH': 'yellow',
@@ -406,14 +407,12 @@ def format_missing_indexes_table(indexes: List[Dict]) -> Table:
             'LOW': 'dim'
         }.get(index['priority'], 'white')
         
-        properties_display = ', '.join(index['properties'])
-        
         table.add_row(
-            index['element_label'],
+            str(i),
             index['index_type'],
-            properties_display,
-            f"[{priority_color}]{index['priority']}[/{priority_color}]",
-            index['cypher_command']
+            index['element_label'],
+            ', '.join(index['properties']),
+            f"[{priority_color}]{index['priority']}[/{priority_color}]"
         )
     
     return table
@@ -431,19 +430,19 @@ def format_data_type_mismatches_table(mismatches: List[Dict]) -> Table:
     """
     table = Table(title="Data Type Mismatches")
     
-    table.add_column("Element Type", style="dim", width=12)
-    table.add_column("Element.Property", style="cyan", width=35)
-    table.add_column("Current Type", style="red", width=20)
+    table.add_column("Element Type", style="bright_white", width=12)
+    table.add_column("Element.Property", style="bright_cyan", width=35)
+    table.add_column("Current Type", style="bright_yellow", width=20)
     table.add_column("", style="dim", width=3)
-    table.add_column("Expected Type", style="green", width=20)
+    table.add_column("Expected Type", style="bright_blue", width=20)
     table.add_column("Priority", style="bold", width=10)
     
     for mismatch in mismatches:
         priority_color = {
-            'CRITICAL': 'red',
-            'HIGH': 'yellow',
-            'MEDIUM': 'blue',
-            'LOW': 'dim'
+            'CRITICAL': 'bright_red',
+            'HIGH': 'bright_yellow',
+            'MEDIUM': 'bright_cyan',
+            'LOW': 'bright_white'
         }.get(mismatch['priority'], 'white')
         
         current_types = ', '.join(mismatch['current_types'])
@@ -587,6 +586,16 @@ def display_schema_comparison_results(results: Dict[str, Any], show_json: bool =
         if recs_by_type.get('relationship_renames'):
             table = format_relationship_renames_table(recs_by_type['relationship_renames'])
             console.print(table)
+            
+            # Print commands separately to avoid truncation
+            console.print("\n[bold bright_magenta]Cypher Commands:[/bold bright_magenta]")
+            for i, rename in enumerate(recs_by_type['relationship_renames'], 1):
+                # Use Text object to ensure proper wrapping
+                from rich.text import Text
+                cmd_text = Text()
+                cmd_text.append(f"{i}. ", style="bright_white")
+                cmd_text.append(rename['cypher_command'], style="bright_cyan")
+                console.print(cmd_text)
             console.print()
         
         # Property renames
@@ -599,6 +608,16 @@ def display_schema_comparison_results(results: Dict[str, Any], show_json: bool =
         if recs_by_type.get('missing_indexes'):
             table = format_missing_indexes_table(recs_by_type['missing_indexes'])
             console.print(table)
+            
+            # Print commands separately to avoid truncation
+            console.print("\n[bold bright_magenta]Cypher Commands:[/bold bright_magenta]")
+            for i, index in enumerate(recs_by_type['missing_indexes'], 1):
+                # Use Text object to ensure proper wrapping
+                from rich.text import Text
+                cmd_text = Text()
+                cmd_text.append(f"{i}. ", style="bright_white")
+                cmd_text.append(index['cypher_command'], style="bright_cyan")
+                console.print(cmd_text)
             console.print()
         
         # Data type mismatches
@@ -615,6 +634,31 @@ def display_schema_comparison_results(results: Dict[str, Any], show_json: bool =
             console.print(rec_table)
             console.print()
     
+    # Generate and display unified compliance script if there are recommendations
+    if 'recommendations_by_type' in results:
+        recs = results['recommendations_by_type']
+        if any(recs.values()):  # If there are any recommendations
+            # Generate the unified script
+            unified_script = generate_unified_compliance_script(recs)
+            
+            # Display with syntax highlighting but no side borders
+            from rich.syntax import Syntax
+            from rich.rule import Rule
+            
+            console.print("\n")
+            # Header with accessible blue
+            console.print(Rule("[bold bright_blue]📋 Unified Compliance Script[/bold bright_blue]", style="bright_blue"))
+            console.print()
+            
+            # Script content with colorblind-friendly syntax highlighting
+            # Using 'github-dark' theme which has good contrast and colorblind-friendly colors
+            console.print(Syntax(unified_script, "cypher", theme="github-dark", line_numbers=False))
+            console.print()
+            
+            # Footer
+            console.print(Rule("[dim bright_blue]Copy and execute in Neo4j Browser or cypher-shell[/dim bright_blue]", style="bright_blue"))
+            console.print()
+    
     # Raw JSON output if requested
     if show_json:
         format_json_output(results, "Raw Comparison Results")
@@ -629,6 +673,92 @@ def show_welcome_message():
     panel = Panel(welcome_text, border_style="blue")
     console.print(panel)
     console.print()
+
+
+def generate_unified_compliance_script(recommendations_by_type: Dict[str, List]) -> str:
+    """
+    Generate a unified Cypher script that includes all compliance recommendations.
+    
+    Args:
+        recommendations_by_type: Dictionary of categorized recommendations
+        
+    Returns:
+        Complete Cypher script as a string
+    """
+    script_lines = []
+    
+    # Header
+    script_lines.append("// Neo4j Schema Compliance Script")
+    script_lines.append("// Generated by Neo4j Schema Comparison Tool")
+    script_lines.append("// Execute this script to bring your schema into compliance")
+    script_lines.append("//")
+    script_lines.append("// WARNING: This script will modify your graph schema.")
+    script_lines.append("// Please backup your database before executing.")
+    script_lines.append("")
+    
+    # 1. Node label renames (must be done first)
+    if recommendations_by_type.get('node_renames'):
+        script_lines.append("// ===== STEP 1: Node Label Changes =====")
+        script_lines.append("// Rename node labels to match the standard")
+        script_lines.append("")
+        
+        for rename in recommendations_by_type['node_renames']:
+            script_lines.append(f"// Rename {rename['current_label']} to {rename['standard_label']}")
+            script_lines.append(rename['cypher_command'] + ";")
+            script_lines.append("")
+    
+    # 2. Relationship type renames
+    if recommendations_by_type.get('relationship_renames'):
+        script_lines.append("// ===== STEP 2: Relationship Type Changes =====")
+        script_lines.append("// Rename relationship types to match the standard")
+        script_lines.append("")
+        
+        for rename in recommendations_by_type['relationship_renames']:
+            script_lines.append(f"// Rename {rename['current_type']} to {rename['standard_type']}")
+            script_lines.append(rename['cypher_command'] + ";")
+            script_lines.append("")
+    
+    # 3. Property renames
+    if recommendations_by_type.get('property_renames'):
+        script_lines.append("// ===== STEP 3: Property Name Changes =====")
+        script_lines.append("// Rename properties to match the standard")
+        script_lines.append("")
+        
+        # Group by element for better organization
+        node_props = [p for p in recommendations_by_type['property_renames'] if p['element_type'] == 'Node']
+        rel_props = [p for p in recommendations_by_type['property_renames'] if p['element_type'] == 'Relationship']
+        
+        if node_props:
+            script_lines.append("// Node properties:")
+            for prop in node_props:
+                script_lines.append(f"// {prop['element_name']}.{prop['current_property']} -> {prop['standard_property']}")
+                script_lines.append(prop['cypher_command'] + ";")
+                script_lines.append("")
+        
+        if rel_props:
+            script_lines.append("// Relationship properties:")
+            for prop in rel_props:
+                script_lines.append(f"// {prop['element_name']}.{prop['current_property']} -> {prop['standard_property']}")
+                script_lines.append(prop['cypher_command'] + ";")
+                script_lines.append("")
+    
+    # 4. Create missing indexes (after renames so they use correct labels)
+    if recommendations_by_type.get('missing_indexes'):
+        script_lines.append("// ===== STEP 4: Create Missing Indexes =====")
+        script_lines.append("// Add indexes that exist in the standard but are missing")
+        script_lines.append("")
+        
+        for index in recommendations_by_type['missing_indexes']:
+            script_lines.append(f"// {index['index_type']} index on {index['element_label']}({', '.join(index['properties'])})")
+            script_lines.append(index['cypher_command'] + ";")
+            script_lines.append("")
+    
+    # Footer
+    script_lines.append("// ===== Script Complete =====")
+    script_lines.append("// Your schema should now be compliant with the standard.")
+    script_lines.append("// Run a new comparison to verify compliance.")
+    
+    return "\n".join(script_lines)
 
 
 def show_completion_message(database_name: str, compliance_score: float):

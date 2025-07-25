@@ -107,11 +107,17 @@ def _enhance_comparison_results(results: Dict[str, Any]) -> Dict[str, Any]:
                 if prop_match.match_type != MatchType.EXACT and 'rename' in ' '.join(prop_match.recommendations).lower():
                     recommendations_by_type['property_renames'].append({
                         'element_type': 'Node',
-                        'element_name': node_match.source_node.label,
+                        'element_name': node_match.source_node.label,  # Display source for clarity
                         'current_property': prop_match.source_field,
                         'standard_property': prop_match.target_field,
                         'similarity_score': prop_match.similarity_result.score,
-                        'priority': _get_priority_from_match_type(prop_match.match_type)
+                        'priority': _get_priority_from_match_type(prop_match.match_type),
+                        'cypher_command': _generate_property_rename_cypher(
+                            'Node', 
+                            node_match.target_node.label,  # Use target label since nodes will be renamed first
+                            prop_match.source_field, 
+                            prop_match.target_field
+                        )
                     })
                 
                 # Check for data type mismatches
@@ -180,11 +186,17 @@ def _enhance_comparison_results(results: Dict[str, Any]) -> Dict[str, Any]:
                 if prop_match.match_type != MatchType.EXACT and 'rename' in ' '.join(prop_match.recommendations).lower():
                     recommendations_by_type['property_renames'].append({
                         'element_type': 'Relationship',
-                        'element_name': rel_match.source_relationship.type,
+                        'element_name': rel_match.source_relationship.type,  # Display source for clarity
                         'current_property': prop_match.source_field,
                         'standard_property': prop_match.target_field,
                         'similarity_score': prop_match.similarity_result.score,
-                        'priority': _get_priority_from_match_type(prop_match.match_type)
+                        'priority': _get_priority_from_match_type(prop_match.match_type),
+                        'cypher_command': _generate_property_rename_cypher(
+                            'Relationship',
+                            rel_match.target_relationship.type,  # Use target type since relationships will be renamed first
+                            prop_match.source_field,
+                            prop_match.target_field
+                        )
                     })
                 
                 # Check for data type mismatches
@@ -308,11 +320,15 @@ def _generate_index_cypher(label: str, index_info) -> str:
 
 def _generate_relationship_rename_cypher(old_type: str, new_type: str) -> str:
     """Generate Cypher command for renaming a relationship type."""
-    return f"""// Rename relationship type from {old_type} to {new_type}
-MATCH (a)-[r:{old_type}]->(b)
-CREATE (a)-[r2:{new_type}]->(b)
-SET r2 = properties(r)
-DELETE r"""
+    return f"MATCH (a)-[r:{old_type}]->(b) CREATE (a)-[r2:{new_type}]->(b) SET r2 = properties(r) DELETE r"
+
+
+def _generate_property_rename_cypher(element_type: str, element_name: str, old_prop: str, new_prop: str) -> str:
+    """Generate Cypher command for renaming a property."""
+    if element_type == 'Node':
+        return f"MATCH (n:{element_name}) WHERE n.{old_prop} IS NOT NULL SET n.{new_prop} = n.{old_prop} REMOVE n.{old_prop}"
+    else:  # Relationship
+        return f"MATCH ()-[r:{element_name}]->() WHERE r.{old_prop} IS NOT NULL SET r.{new_prop} = r.{old_prop} REMOVE r.{old_prop}"
 
 
 def get_similarity_engine_info() -> Dict[str, Any]:

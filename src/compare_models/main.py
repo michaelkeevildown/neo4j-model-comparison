@@ -1,6 +1,9 @@
 import json
 import logging
-from .orchestrator import quick_compare
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from compare_models.orchestrator import quick_compare
 
 
 # Suppress verbose warnings from the Neo4j driver

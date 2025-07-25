@@ -46,6 +46,15 @@ def _enhance_comparison_results(results: Dict[str, Any]) -> Dict[str, Any]:
         'optimization': []   # Performance and best practice improvements
     }
     
+    # New categorization by issue type
+    recommendations_by_type = {
+        'node_renames': [],           # Node label changes
+        'relationship_renames': [],   # Relationship type changes  
+        'property_renames': [],       # Property name changes
+        'missing_indexes': [],        # Missing indexes
+        'data_type_mismatches': []    # Wrong property data types
+    }
+    
     # Analyze node matches for categorized recommendations
     for node_match in results.get('node_matches', []):
         if node_match.target_node is None:
@@ -61,6 +70,17 @@ def _enhance_comparison_results(results: Dict[str, Any]) -> Dict[str, Any]:
                 _categorize_field_recommendations(
                     node_match.label_match, 'node_label', recommendations_by_category
                 )
+                
+                # Add to type-based categorization
+                if node_match.label_match.match_type != MatchType.EXACT:
+                    recommendations_by_type['node_renames'].append({
+                        'current_label': node_match.source_node.label,
+                        'standard_label': node_match.target_node.label,
+                        'match_type': node_match.label_match.match_type,
+                        'similarity_score': node_match.label_match.similarity_result.score,
+                        'priority': _get_priority_from_match_type(node_match.label_match.match_type),
+                        'cypher_command': f"MATCH (n:{node_match.source_node.label}) SET n:{node_match.target_node.label} REMOVE n:{node_match.source_node.label}"
+                    })
             
             # Analyze missing properties
             for missing_prop in node_match.missing_properties:
@@ -82,6 +102,46 @@ def _enhance_comparison_results(results: Dict[str, Any]) -> Dict[str, Any]:
                 _categorize_field_recommendations(
                     prop_match, 'node_property', recommendations_by_category
                 )
+                
+                # Check for property renames
+                if prop_match.match_type != MatchType.EXACT and 'rename' in ' '.join(prop_match.recommendations).lower():
+                    recommendations_by_type['property_renames'].append({
+                        'element_type': 'Node',
+                        'element_name': node_match.source_node.label,
+                        'current_property': prop_match.source_field,
+                        'standard_property': prop_match.target_field,
+                        'similarity_score': prop_match.similarity_result.score,
+                        'priority': _get_priority_from_match_type(prop_match.match_type)
+                    })
+                
+                # Check for data type mismatches
+                if 'type mismatch' in ' '.join(prop_match.recommendations).lower():
+                    # Find the property definitions to get type info
+                    source_prop = next((p for p in node_match.source_node.properties if p.property == prop_match.source_field), None)
+                    target_prop = next((p for p in node_match.target_node.properties if p.property == prop_match.target_field), None)
+                    
+                    recommendations_by_type['data_type_mismatches'].append({
+                        'element_type': 'Node',
+                        'element_property': f"{node_match.source_node.label}.{prop_match.source_field}",
+                        'current_types': source_prop.type if source_prop else ['unknown'],
+                        'expected_types': target_prop.type if target_prop else ['unknown'],
+                        'priority': 'HIGH'
+                    })
+            
+            # Check for missing indexes
+            if node_match.target_node.indexes:
+                source_index_keys = {f"{idx.type}:{':'.join(sorted(idx.properties))}" for idx in node_match.source_node.indexes}
+                for target_index in node_match.target_node.indexes:
+                    target_key = f"{target_index.type}:{':'.join(sorted(target_index.properties))}"
+                    if target_key not in source_index_keys:
+                        cypher_cmd = _generate_index_cypher(node_match.target_node.label, target_index)
+                        recommendations_by_type['missing_indexes'].append({
+                            'element_label': node_match.source_node.label,
+                            'index_type': target_index.type,
+                            'properties': target_index.properties,
+                            'priority': 'MEDIUM',
+                            'cypher_command': cypher_cmd
+                        })
     
     # Analyze relationship matches
     for rel_match in results.get('relationship_matches', []):
@@ -96,14 +156,54 @@ def _enhance_comparison_results(results: Dict[str, Any]) -> Dict[str, Any]:
                 _categorize_field_recommendations(
                     rel_match.type_match, 'relationship_type', recommendations_by_category
                 )
+                
+                # Add to type-based categorization
+                if rel_match.type_match.match_type != MatchType.EXACT:
+                    recommendations_by_type['relationship_renames'].append({
+                        'current_type': rel_match.source_relationship.type,
+                        'standard_type': rel_match.target_relationship.type,
+                        'match_type': rel_match.type_match.match_type,
+                        'similarity_score': rel_match.type_match.similarity_result.score,
+                        'priority': _get_priority_from_match_type(rel_match.type_match.match_type),
+                        'cypher_command': _generate_relationship_rename_cypher(
+                            rel_match.source_relationship.type,
+                            rel_match.target_relationship.type
+                        )
+                    })
             
             for prop_match in rel_match.property_matches:
                 _categorize_field_recommendations(
                     prop_match, 'relationship_property', recommendations_by_category
                 )
+                
+                # Check for property renames
+                if prop_match.match_type != MatchType.EXACT and 'rename' in ' '.join(prop_match.recommendations).lower():
+                    recommendations_by_type['property_renames'].append({
+                        'element_type': 'Relationship',
+                        'element_name': rel_match.source_relationship.type,
+                        'current_property': prop_match.source_field,
+                        'standard_property': prop_match.target_field,
+                        'similarity_score': prop_match.similarity_result.score,
+                        'priority': _get_priority_from_match_type(prop_match.match_type)
+                    })
+                
+                # Check for data type mismatches
+                if 'type mismatch' in ' '.join(prop_match.recommendations).lower():
+                    # Find the property definitions to get type info
+                    source_prop = next((p for p in rel_match.source_relationship.properties if p.property == prop_match.source_field), None)
+                    target_prop = next((p for p in rel_match.target_relationship.properties if p.property == prop_match.target_field), None)
+                    
+                    recommendations_by_type['data_type_mismatches'].append({
+                        'element_type': 'Relationship',
+                        'element_property': f"{rel_match.source_relationship.type}.{prop_match.source_field}",
+                        'current_types': source_prop.type if source_prop else ['unknown'],
+                        'expected_types': target_prop.type if target_prop else ['unknown'],
+                        'priority': 'HIGH'
+                    })
     
     # Add categorized recommendations to results
     enhanced['categorized_recommendations'] = recommendations_by_category
+    enhanced['recommendations_by_type'] = recommendations_by_type
     
     # Add priority scores
     enhanced['priority_scores'] = {
@@ -180,6 +280,39 @@ def _calculate_compliance_level(compliance_score: float,
         return 'poor'
     else:
         return 'critical'
+
+
+def _get_priority_from_match_type(match_type: MatchType) -> str:
+    """Convert MatchType to priority string."""
+    if match_type == MatchType.EXACT:
+        return 'LOW'
+    elif match_type == MatchType.STRONG:
+        return 'MEDIUM'
+    elif match_type == MatchType.MODERATE:
+        return 'HIGH'
+    else:
+        return 'CRITICAL'
+
+
+def _generate_index_cypher(label: str, index_info) -> str:
+    """Generate Cypher command for creating an index."""
+    if index_info.type == 'BTREE':
+        props = ', '.join(f'n.{prop}' for prop in index_info.properties)
+        return f"CREATE INDEX FOR (n:{label}) ON ({props})"
+    elif index_info.type == 'FULLTEXT':
+        props = ', '.join(f'n.{prop}' for prop in index_info.properties)
+        return f"CREATE FULLTEXT INDEX FOR (n:{label}) ON EACH [{props}]"
+    else:
+        return f"// Create {index_info.type} index for {label}({', '.join(index_info.properties)})"
+
+
+def _generate_relationship_rename_cypher(old_type: str, new_type: str) -> str:
+    """Generate Cypher command for renaming a relationship type."""
+    return f"""// Rename relationship type from {old_type} to {new_type}
+MATCH (a)-[r:{old_type}]->(b)
+CREATE (a)-[r2:{new_type}]->(b)
+SET r2 = properties(r)
+DELETE r"""
 
 
 def get_similarity_engine_info() -> Dict[str, Any]:

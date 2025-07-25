@@ -188,10 +188,18 @@ class FieldMatcher:
             standard_node.label
         )
         
+        # Check if it's only a case difference
+        is_case_only_diff = customer_node.label.lower() == standard_node.label.lower() and customer_node.label != standard_node.label
+        
+        # Adjust match type for case-only differences
+        match_type = self._classify_match_type(label_similarity.score)
+        if is_case_only_diff and match_type == MatchType.EXACT:
+            match_type = MatchType.STRONG  # Downgrade to STRONG so it appears in recommendations
+        
         label_match = FieldMatch(
             source_field=customer_node.label,
             target_field=standard_node.label,
-            match_type=self._classify_match_type(label_similarity.score),
+            match_type=match_type,
             similarity_result=label_similarity,
             confidence=label_similarity.confidence,
             recommendations=self._generate_label_recommendations(
@@ -273,10 +281,18 @@ class FieldMatcher:
             standard_rel.type
         )
         
+        # Check if it's only a case difference
+        is_case_only_diff = customer_rel.type.lower() == standard_rel.type.lower() and customer_rel.type != standard_rel.type
+        
+        # Adjust match type for case-only differences
+        match_type = self._classify_match_type(type_similarity.score)
+        if is_case_only_diff and match_type == MatchType.EXACT:
+            match_type = MatchType.STRONG  # Downgrade to STRONG so it appears in recommendations
+        
         type_match = FieldMatch(
             source_field=customer_rel.type,
             target_field=standard_rel.type,
-            match_type=self._classify_match_type(type_similarity.score),
+            match_type=match_type,
             similarity_result=type_similarity,
             confidence=type_similarity.confidence,
             recommendations=self._generate_relationship_recommendations(
@@ -332,11 +348,20 @@ class FieldMatcher:
             if best_match:
                 used_standard_props.add(best_match.property)
                 
+                # Check if it's underscore vs camelCase or case-only difference
+                is_underscore_to_camel = self._is_underscore_to_camelcase(customer_prop.property, best_match.property)
+                is_case_only_diff = customer_prop.property.lower() == best_match.property.lower() and customer_prop.property != best_match.property
+                
+                # Adjust match type for formatting differences
+                match_type = self._classify_match_type(best_score)
+                if (is_underscore_to_camel or is_case_only_diff) and match_type == MatchType.EXACT:
+                    match_type = MatchType.STRONG  # Downgrade to STRONG so it appears in recommendations
+                
                 # Create property match
                 prop_match = FieldMatch(
                     source_field=customer_prop.property,
                     target_field=best_match.property,
-                    match_type=self._classify_match_type(best_score),
+                    match_type=match_type,
                     similarity_result=self.similarity_engine.calculate(
                         customer_prop.property, best_match.property
                     ),
@@ -411,6 +436,19 @@ class FieldMatcher:
         
         return recommendations
     
+    def _is_underscore_to_camelcase(self, underscore_str: str, camel_str: str) -> bool:
+        """Check if two strings represent underscore vs camelCase versions of the same name."""
+        # Convert underscore to camelCase
+        parts = underscore_str.split('_')
+        if len(parts) > 1:
+            expected_camel = parts[0] + ''.join(word.capitalize() for word in parts[1:])
+            return expected_camel == camel_str
+        
+        # Also check the reverse (camelCase to underscore)
+        import re
+        camel_to_underscore = re.sub(r'(?<!^)(?=[A-Z])', '_', camel_str).lower()
+        return camel_to_underscore == underscore_str
+    
     def _generate_property_recommendations(self, customer_prop: PropertyDefinition, 
                                          standard_prop: PropertyDefinition, 
                                          similarity: SimilarityResult) -> List[str]:
@@ -425,7 +463,7 @@ class FieldMatcher:
                 )
             else:
                 recommendations.append(
-                    f"Consider renaming property '{customer_prop.property}' to '{standard_prop.property}' for clarity"
+                    f"Rename property '{customer_prop.property}' to '{standard_prop.property}' to match standard"
                 )
         
         # Type recommendations

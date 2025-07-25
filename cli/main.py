@@ -18,6 +18,8 @@ from rich.console import Console
 
 # Add the src directory to Python path so we can import the core modules
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+# Add the CLI directory to Python path so we can import CLI modules
+sys.path.insert(0, str(Path(__file__).parent))
 
 from aura_support import (
     parse_aura_credentials_file, 

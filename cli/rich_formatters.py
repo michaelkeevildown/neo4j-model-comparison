@@ -261,6 +261,206 @@ def format_recommendations_table(recommendations: Dict[str, List]) -> Table:
     return table
 
 
+def format_node_renames_table(renames: List[Dict]) -> Table:
+    """
+    Format node label renames as a rich table.
+    
+    Args:
+        renames: List of node rename recommendations
+        
+    Returns:
+        Rich Table with node renames
+    """
+    table = Table(title="Node Label Changes Required")
+    
+    table.add_column("Current Label", style="cyan", width=25)
+    table.add_column("", style="dim", width=3)
+    table.add_column("Standard Label", style="green", width=25)
+    table.add_column("Priority", style="bold", width=10)
+    table.add_column("Cypher Command", style="blue", width=60)
+    
+    for rename in renames:
+        priority_color = {
+            'CRITICAL': 'red',
+            'HIGH': 'yellow',
+            'MEDIUM': 'blue',
+            'LOW': 'dim'
+        }.get(rename['priority'], 'white')
+        
+        table.add_row(
+            rename['current_label'],
+            StatusIndicators.ARROW,
+            rename['standard_label'],
+            f"[{priority_color}]{rename['priority']}[/{priority_color}]",
+            rename['cypher_command']
+        )
+    
+    return table
+
+
+def format_relationship_renames_table(renames: List[Dict]) -> Table:
+    """
+    Format relationship type renames as a rich table.
+    
+    Args:
+        renames: List of relationship rename recommendations
+        
+    Returns:
+        Rich Table with relationship renames
+    """
+    table = Table(title="Relationship Type Changes Required")
+    
+    table.add_column("Current Type", style="cyan", width=25)
+    table.add_column("", style="dim", width=3)
+    table.add_column("Standard Type", style="green", width=25)
+    table.add_column("Priority", style="bold", width=10)
+    table.add_column("Cypher Command", style="blue", width=60)
+    
+    for rename in renames:
+        priority_color = {
+            'CRITICAL': 'red',
+            'HIGH': 'yellow',
+            'MEDIUM': 'blue',
+            'LOW': 'dim'
+        }.get(rename['priority'], 'white')
+        
+        # Truncate long Cypher commands for display
+        cypher_lines = rename['cypher_command'].split('\n')
+        cypher_display = cypher_lines[0] if cypher_lines else rename['cypher_command']
+        if len(cypher_lines) > 1:
+            cypher_display += " ..."
+        
+        table.add_row(
+            rename['current_type'],
+            StatusIndicators.ARROW,
+            rename['standard_type'],
+            f"[{priority_color}]{rename['priority']}[/{priority_color}]",
+            cypher_display
+        )
+    
+    return table
+
+
+def format_property_renames_table(renames: List[Dict]) -> Table:
+    """
+    Format property renames as a rich table.
+    
+    Args:
+        renames: List of property rename recommendations
+        
+    Returns:
+        Rich Table with property renames
+    """
+    table = Table(title="Property Name Changes Required")
+    
+    table.add_column("Element Type", style="dim", width=12)
+    table.add_column("Element Name", style="cyan", width=20)
+    table.add_column("Current Property", style="red", width=25)
+    table.add_column("", style="dim", width=3)
+    table.add_column("Standard Property", style="green", width=25)
+    table.add_column("Priority", style="bold", width=10)
+    
+    for rename in renames:
+        priority_color = {
+            'CRITICAL': 'red',
+            'HIGH': 'yellow',
+            'MEDIUM': 'blue',
+            'LOW': 'dim'
+        }.get(rename['priority'], 'white')
+        
+        table.add_row(
+            rename['element_type'],
+            rename['element_name'],
+            rename['current_property'],
+            StatusIndicators.ARROW,
+            rename['standard_property'],
+            f"[{priority_color}]{rename['priority']}[/{priority_color}]"
+        )
+    
+    return table
+
+
+def format_missing_indexes_table(indexes: List[Dict]) -> Table:
+    """
+    Format missing indexes as a rich table.
+    
+    Args:
+        indexes: List of missing index recommendations
+        
+    Returns:
+        Rich Table with missing indexes
+    """
+    table = Table(title="Missing Indexes")
+    
+    table.add_column("Element Label", style="cyan", width=25)
+    table.add_column("Index Type", style="blue", width=15)
+    table.add_column("Properties", style="green", width=30)
+    table.add_column("Priority", style="bold", width=10)
+    table.add_column("Cypher Command", style="blue", width=50)
+    
+    for index in indexes:
+        priority_color = {
+            'CRITICAL': 'red',
+            'HIGH': 'yellow',
+            'MEDIUM': 'blue',
+            'LOW': 'dim'
+        }.get(index['priority'], 'white')
+        
+        properties_display = ', '.join(index['properties'])
+        
+        table.add_row(
+            index['element_label'],
+            index['index_type'],
+            properties_display,
+            f"[{priority_color}]{index['priority']}[/{priority_color}]",
+            index['cypher_command']
+        )
+    
+    return table
+
+
+def format_data_type_mismatches_table(mismatches: List[Dict]) -> Table:
+    """
+    Format data type mismatches as a rich table.
+    
+    Args:
+        mismatches: List of data type mismatch recommendations
+        
+    Returns:
+        Rich Table with data type mismatches
+    """
+    table = Table(title="Data Type Mismatches")
+    
+    table.add_column("Element Type", style="dim", width=12)
+    table.add_column("Element.Property", style="cyan", width=35)
+    table.add_column("Current Type", style="red", width=20)
+    table.add_column("", style="dim", width=3)
+    table.add_column("Expected Type", style="green", width=20)
+    table.add_column("Priority", style="bold", width=10)
+    
+    for mismatch in mismatches:
+        priority_color = {
+            'CRITICAL': 'red',
+            'HIGH': 'yellow',
+            'MEDIUM': 'blue',
+            'LOW': 'dim'
+        }.get(mismatch['priority'], 'white')
+        
+        current_types = ', '.join(mismatch['current_types'])
+        expected_types = ', '.join(mismatch['expected_types'])
+        
+        table.add_row(
+            mismatch['element_type'],
+            mismatch['element_property'],
+            current_types,
+            StatusIndicators.ARROW,
+            expected_types,
+            f"[{priority_color}]{mismatch['priority']}[/{priority_color}]"
+        )
+    
+    return table
+
+
 def format_progress_context():
     """
     Create a progress context for long-running operations.
@@ -373,8 +573,42 @@ def display_schema_comparison_results(results: Dict[str, Any], show_json: bool =
     console.print(summary_panel)
     console.print()
     
-    # Recommendations table
-    if 'categorized_recommendations' in results:
+    # Display new categorized recommendations by type if available
+    if 'recommendations_by_type' in results:
+        recs_by_type = results['recommendations_by_type']
+        
+        # Node renames
+        if recs_by_type.get('node_renames'):
+            table = format_node_renames_table(recs_by_type['node_renames'])
+            console.print(table)
+            console.print()
+        
+        # Relationship renames
+        if recs_by_type.get('relationship_renames'):
+            table = format_relationship_renames_table(recs_by_type['relationship_renames'])
+            console.print(table)
+            console.print()
+        
+        # Property renames
+        if recs_by_type.get('property_renames'):
+            table = format_property_renames_table(recs_by_type['property_renames'])
+            console.print(table)
+            console.print()
+        
+        # Missing indexes
+        if recs_by_type.get('missing_indexes'):
+            table = format_missing_indexes_table(recs_by_type['missing_indexes'])
+            console.print(table)
+            console.print()
+        
+        # Data type mismatches
+        if recs_by_type.get('data_type_mismatches'):
+            table = format_data_type_mismatches_table(recs_by_type['data_type_mismatches'])
+            console.print(table)
+            console.print()
+    
+    # Fall back to old-style recommendations if new format not available
+    elif 'categorized_recommendations' in results:
         recommendations = results['categorized_recommendations']
         if any(recommendations.values()):  # If there are any recommendations
             rec_table = format_recommendations_table(recommendations)

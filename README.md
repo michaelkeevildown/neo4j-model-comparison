@@ -92,6 +92,67 @@ print(f'Compliance Score: {results['summary']['overall_compliance_score']:.1%}')
 "
 ```
 
+## 🎯 Neo4j Aura Integration
+
+**Special support for Neo4j Aura users!** Just drag and drop your credentials file:
+
+```bash
+# Import and validate Aura credentials
+python cli/main.py import-credentials ~/Downloads/Neo4j-MyInstance.txt
+
+# List all databases in your Aura instance
+python cli/main.py list-databases --aura-file ~/Downloads/Neo4j-MyInstance.txt
+
+# Compare with beautiful interactive selection
+python cli/main.py compare --aura-file ~/Downloads/Neo4j-MyInstance.txt
+```
+
+### CLI Features
+
+- 🔵 **Auto-parse Aura credential files** - No manual copying of URIs/passwords
+- 🗄️ **Database discovery** - See all your databases with status and metadata
+- 🎨 **Rich terminal output** - Beautiful tables, colors, and progress bars
+- 📊 **Interactive selection** - Choose databases with arrow keys
+- 🚀 **Batch analysis** - Compare all databases at once with `--all-databases`
+
+### Example CLI Output
+
+```
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ Neo4j Schema Comparison Tool                                                 │
+│ Compare your Neo4j database schema against standard models                   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+╭───────────────────────────── Connection Details ─────────────────────────────╮
+│ 🔵 Neo4j Aura Connection                                                     │
+│ Instance: My Production Database                                             │
+│ Instance ID: 24b2cxxx                                                        │
+│ Username: neo4j                                                              │
+│ Default Database: neo4j                                                      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+Available Databases
+┌──────────┬────────┬─────────┬─────────┬──────┐
+│ Database │ Status │ Role    │ Default │ Type │
+├──────────┼────────┼─────────┼─────────┼──────┤
+│ neo4j    │ online │ primary │ ✓       │ user │
+│ movies   │ online │ primary │         │ user │
+│ finance  │ online │ primary │         │ user │
+└──────────┴────────┴─────────┴─────────┴──────┘
+
+? Select database to analyze: finance
+
+╭──────────────── 📊 Comparison Summary ────────────────╮
+│ Overall Compliance Score: 87.5%                       │
+│ Compliance Level: GOOD                                │
+│                                                       │
+│ Match Statistics:                                     │
+│   Nodes: 8/10                                        │
+│   Relationships: 5/6                                 │
+│   Properties: 23/28                                  │
+╰───────────────────────────────────────────────────────╯
+```
+
 ## 💎 What You Get
 
 ### Your Current Schema (Extracted)

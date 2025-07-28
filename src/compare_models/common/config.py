@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from functools import lru_cache
 
 
 class Neo4jSettings(BaseSettings):
@@ -12,4 +13,15 @@ class Neo4jSettings(BaseSettings):
     )
 
 
+def get_settings() -> Neo4jSettings:
+    """
+    Get fresh Neo4j settings from environment variables.
+    This function creates a new settings instance each time it's called,
+    ensuring it picks up any changes to environment variables.
+    """
+    return Neo4jSettings()
+
+
+# For backward compatibility, create a default instance
+# but recommend using get_settings() for dynamic loading
 settings = Neo4jSettings()

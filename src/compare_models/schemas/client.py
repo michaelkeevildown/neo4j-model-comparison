@@ -1,9 +1,12 @@
 from neo4j import GraphDatabase, NotificationMinimumSeverity
-from ..common.config import settings
+from ..common.config import get_settings
 from ..common.models import GraphSchema, Node, Relationship, PropertyDefinition, Path, Constraint, Index
 
 
 def get_graph_schema() -> GraphSchema:
+    # Get fresh settings to pick up any environment variable changes
+    settings = get_settings()
+    
     # Suppress Neo4j warnings about propertyTypes field format changes in future versions
     # The warnings are about db.schema.nodeTypeProperties() and db.schema.relTypeProperties()
     # procedures changing their propertyTypes field output format in the next major version

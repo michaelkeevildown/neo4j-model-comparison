@@ -99,6 +99,16 @@ def cli():
     help='Include raw JSON output'
 )
 @click.option(
+    '--verbose',
+    is_flag=True,
+    help='Show detailed matching process and statistics'
+)
+@click.option(
+    '--entity-centric',
+    is_flag=True,
+    help='Use entity-centric output format (groups all info by entity)'
+)
+@click.option(
     '--all-databases',
     is_flag=True,
     help='Compare all non-system databases'
@@ -118,6 +128,8 @@ def compare(
     threshold: float,
     adaptive: bool,
     output_json: bool,
+    verbose: bool,
+    entity_centric: bool,
     all_databases: bool,
     list_databases: bool
 ):
@@ -201,7 +213,8 @@ def compare(
         # Perform comparisons
         for db_name in selected_databases:
             _perform_comparison(
-                connection_info, db_name, standard, threshold, adaptive, output_json
+                connection_info, db_name, standard, threshold, adaptive, output_json,
+                verbose, entity_centric
             )
             
             if len(selected_databases) > 1:
@@ -380,7 +393,9 @@ def _display_database_list(databases):
         print_info(f"Recommended for analysis: {recommended.name}")
 
 
-def _perform_comparison(connection_info: dict, database_name: str, standard: str, threshold: float, adaptive: bool, output_json: bool):
+def _perform_comparison(connection_info: dict, database_name: str, standard: str, 
+                       threshold: float, adaptive: bool, output_json: bool,
+                       verbose: bool, entity_centric: bool):
     """Perform schema comparison for a specific database."""
     print_header(f"Analyzing Database: {database_name}")
     
@@ -401,11 +416,14 @@ def _perform_comparison(connection_info: dict, database_name: str, standard: str
             results = comparator.compare_database_to_standard(
                 standard_name=standard,
                 similarity_threshold=threshold,
-                use_adaptive=adaptive
+                use_adaptive=adaptive,
+                verbose=verbose,
+                entity_centric=entity_centric
             )
         
         # Display results
-        display_schema_comparison_results(results, show_json=output_json)
+        display_schema_comparison_results(results, show_json=output_json, 
+                                         entity_centric=entity_centric, verbose=verbose)
         
         # Show completion message
         summary = results.get('summary', {})

@@ -16,7 +16,12 @@ from rich.tree import Tree
 from rich.columns import Columns
 from rich.prompt import Prompt, Confirm
 from rich.pretty import Pretty
-from database_discovery import DatabaseInfo
+from rich.syntax import Syntax
+from rich.markdown import Markdown
+try:
+    from database_discovery import DatabaseInfo
+except ImportError:
+    DatabaseInfo = None
 
 
 # Global console instance
@@ -460,6 +465,283 @@ def format_data_type_mismatches_table(mismatches: List[Dict]) -> Table:
     return table
 
 
+def format_entity_centric_node(node_data: Dict[str, Any]) -> Panel:
+    """
+    Format a single node in entity-centric view.
+    
+    Args:
+        node_data: Node information from entity-centric formatter
+        
+    Returns:
+        Rich Panel with node details
+    """
+    tree = Tree(f"[bold]🔍 NODE: {node_data['source']['label']}[/bold]")
+    
+    # Match information
+    if node_data.get('match'):
+        match = node_data['match']
+        match_color = {
+            'exact': 'green',
+            'strong': 'bright_green',
+            'moderate': 'yellow',
+            'weak': 'orange1',
+            'no_match': 'red'
+        }.get(match['type'], 'white')
+        
+        match_node = tree.add(f"[{match_color}]Match: {match['label']} (Score: {match['score']:.2f})[/{match_color}]")
+        
+        # Add similarity breakdown if available
+        if match.get('similarity_breakdown'):
+            breakdown = match['similarity_breakdown']
+            techniques_node = match_node.add("Techniques:")
+            for tech, score in breakdown.get('techniques', {}).items():
+                techniques_node.add(f"{tech}: {score:.2f}")
+    else:
+        tree.add("[red]Match: No suitable match found[/red]")
+        if node_data.get('recommendations'):
+            rec_node = tree.add("Recommendations:")
+            for rec in node_data['recommendations']:
+                rec_node.add(f"[yellow]{rec}[/yellow]")
+    
+    # Properties
+    if 'properties' in node_data:
+        props = node_data['properties']
+        props_node = tree.add("Properties:")
+        
+        # Matched properties
+        if props.get('matches'):
+            matches_node = props_node.add(f"[green]Matched ({len(props['matches'])})[/green]")
+            for prop in props['matches']:
+                prop_text = f"{prop['source']} → {prop['target']} ({prop['score']:.2f})"
+                if prop.get('recommendations'):
+                    prop_text += f" [yellow]{prop['recommendations'][0]}[/yellow]"
+                matches_node.add(prop_text)
+        
+        # Missing properties
+        if props.get('missing'):
+            missing_node = props_node.add(f"[yellow]Missing ({len(props['missing'])})[/yellow]")
+            for prop in props['missing']:
+                mandatory = " [red](mandatory)[/red]" if prop['mandatory'] else ""
+                missing_node.add(f"{prop['name']}: {prop['type']}{mandatory}")
+        
+        # Extra properties
+        if props.get('extra'):
+            extra_node = props_node.add(f"[dim]Extra ({len(props['extra'])})[/dim]")
+            for prop in props['extra'][:3]:
+                extra_node.add(f"{prop['name']}")
+            if len(props['extra']) > 3:
+                extra_node.add(f"... and {len(props['extra']) - 3} more")
+    
+    # Validation warnings
+    if node_data.get('validation', {}).get('warnings'):
+        warnings_node = tree.add("[yellow]⚠️  Validation Warnings:[/yellow]")
+        for warning in node_data['validation']['warnings']:
+            warnings_node.add(f"[yellow]{warning}[/yellow]")
+    
+    # Confidence
+    if node_data.get('match', {}).get('confidence'):
+        confidence = node_data['match']['confidence']
+        conf_color = 'green' if confidence > 0.8 else 'yellow' if confidence > 0.6 else 'red'
+        tree.add(f"[{conf_color}]Confidence: {confidence:.1%}[/{conf_color}]")
+    
+    return Panel(tree, border_style="blue", width=100)
+
+
+def format_entity_centric_relationship(rel_data: Dict[str, Any]) -> Panel:
+    """
+    Format a single relationship in entity-centric view.
+    
+    Args:
+        rel_data: Relationship information from entity-centric formatter
+        
+    Returns:
+        Rich Panel with relationship details
+    """
+    tree = Tree(f"[bold]🔗 RELATIONSHIP: {rel_data['source']['type']}[/bold]")
+    
+    # Show paths
+    if rel_data['source'].get('paths'):
+        paths_node = tree.add("Paths:")
+        for path in rel_data['source']['paths'][:2]:
+            paths_node.add(f"[dim]{path}[/dim]")
+    
+    # Match information
+    if rel_data.get('match'):
+        match = rel_data['match']
+        match_color = {
+            'exact': 'green',
+            'strong': 'bright_green',
+            'moderate': 'yellow',
+            'weak': 'orange1',
+            'no_match': 'red'
+        }.get(match['match_type'], 'white')
+        
+        match_node = tree.add(f"[{match_color}]Match: {match['type']} (Score: {match['score']:.2f})[/{match_color}]")
+        
+        # Add similarity breakdown if available
+        if match.get('similarity_breakdown'):
+            breakdown = match['similarity_breakdown']
+            techniques_node = match_node.add("Techniques:")
+            for tech, score in breakdown.get('techniques', {}).items():
+                techniques_node.add(f"{tech}: {score:.2f}")
+    else:
+        tree.add("[red]Match: No suitable match found[/red]")
+        if rel_data.get('recommendations'):
+            rec_node = tree.add("Recommendations:")
+            for rec in rel_data['recommendations']:
+                rec_node.add(f"[yellow]{rec}[/yellow]")
+    
+    # Properties (similar to nodes but usually fewer)
+    if 'properties' in rel_data and rel_data['properties'].get('matches'):
+        props_node = tree.add("Properties:")
+        for prop in rel_data['properties']['matches']:
+            props_node.add(f"{prop['source']} → {prop['target']} ({prop['score']:.2f})")
+    
+    # Validation warnings
+    if rel_data.get('validation', {}).get('warnings'):
+        warnings_node = tree.add("[yellow]⚠️  Validation Warnings:[/yellow]")
+        for warning in rel_data['validation']['warnings']:
+            warnings_node.add(f"[yellow]{warning}[/yellow]")
+    
+    return Panel(tree, border_style="cyan", width=100)
+
+
+def format_matching_statistics(stats: Dict[str, Any]) -> Panel:
+    """
+    Format matching statistics summary.
+    
+    Args:
+        stats: Statistics from the comparison
+        
+    Returns:
+        Rich Panel with statistics
+    """
+    # Create summary table
+    summary_table = Table(title="Matching Statistics", show_header=False)
+    summary_table.add_column("Metric", style="bold")
+    summary_table.add_column("Value", justify="right")
+    
+    overview = stats.get('overview', {})
+    summary_table.add_row("Total Nodes Analyzed", str(overview.get('total_nodes_analyzed', 0)))
+    summary_table.add_row("Node Match Rate", f"{overview.get('node_match_rate', 0):.1%}")
+    summary_table.add_row("Total Relationships Analyzed", str(overview.get('total_relationships_analyzed', 0)))
+    summary_table.add_row("Relationship Match Rate", f"{overview.get('relationship_match_rate', 0):.1%}")
+    summary_table.add_row("Total Properties Analyzed", str(overview.get('total_properties_analyzed', 0)))
+    summary_table.add_row("Property Match Rate", f"{overview.get('property_match_rate', 0):.1%}")
+    
+    # Create technique effectiveness table
+    tech_table = Table(title="Technique Effectiveness")
+    tech_table.add_column("Technique", style="cyan")
+    tech_table.add_column("Usage", justify="right")
+    tech_table.add_column("Success Rate", justify="right")
+    tech_table.add_column("Avg Score", justify="right")
+    
+    tech_effectiveness = stats.get('technique_effectiveness', {})
+    for technique, data in tech_effectiveness.items():
+        tech_table.add_row(
+            technique,
+            str(data['usage_count']),
+            f"{data['success_rate']:.1%}",
+            f"{data['average_score']:.2f}"
+        )
+    
+    # Create match distribution visualization
+    dist_text = Text("Match Distribution:\n", style="bold")
+    
+    node_dist = stats.get('match_distribution', {}).get('nodes', {})
+    if node_dist:
+        dist_text.append("\nNodes: ", style="bold cyan")
+        for match_type, count in node_dist.items():
+            color = {
+                'exact': 'green',
+                'strong': 'bright_green',
+                'moderate': 'yellow',
+                'weak': 'orange1',
+                'no_match': 'red'
+            }.get(match_type, 'white')
+            dist_text.append(f"{match_type}={count} ", style=color)
+    
+    rel_dist = stats.get('match_distribution', {}).get('relationships', {})
+    if rel_dist:
+        dist_text.append("\nRelationships: ", style="bold cyan")
+        for match_type, count in rel_dist.items():
+            color = {
+                'exact': 'green',
+                'strong': 'bright_green',
+                'moderate': 'yellow',
+                'weak': 'orange1',
+                'no_match': 'red'
+            }.get(match_type, 'white')
+            dist_text.append(f"{match_type}={count} ", style=color)
+    
+    # Combine all elements
+    columns = Columns([summary_table, tech_table], equal=True, expand=True)
+    
+    tree = Tree("📊 Matching Statistics")
+    tree.add(columns)
+    tree.add(dist_text)
+    
+    # Add common issues if present
+    common_issues = stats.get('common_issues', {})
+    if any(common_issues.values()):
+        issues_node = tree.add("Common Issues Found:")
+        if common_issues.get('case_mismatches', 0) > 0:
+            issues_node.add(f"[yellow]Case mismatches: {common_issues['case_mismatches']}[/yellow]")
+        if common_issues.get('abbreviations_found', 0) > 0:
+            issues_node.add(f"[yellow]Abbreviations: {common_issues['abbreviations_found']}[/yellow]")
+        
+        naming_issues = common_issues.get('naming_convention_issues', {})
+        if any(naming_issues.values()):
+            naming_node = issues_node.add("Naming Convention Issues:")
+            for issue_type, count in naming_issues.items():
+                if count > 0:
+                    naming_node.add(f"{issue_type}: {count}")
+    
+    return Panel(tree, border_style="green", width=120)
+
+
+def format_verbose_match_explanation(match_data: Dict[str, Any]) -> Text:
+    """
+    Format verbose explanation of why a match was made.
+    
+    Args:
+        match_data: Match data with rationale and candidates
+        
+    Returns:
+        Rich Text with explanation
+    """
+    text = Text()
+    
+    # Show match rationale
+    if match_data.get('match_rationale'):
+        text.append(match_data['match_rationale'] + "\n", style="bright_white")
+    
+    # Show all candidates if available
+    if match_data.get('all_candidates'):
+        text.append("\nAll candidates considered:\n", style="bold")
+        for i, (candidate, score) in enumerate(match_data['all_candidates'][:5], 1):
+            candidate_name = candidate.label if hasattr(candidate, 'label') else candidate.type
+            if score >= 0.7:
+                style = "green"
+            elif score >= 0.5:
+                style = "yellow"
+            else:
+                style = "dim"
+            
+            text.append(f"  {i}. {candidate_name}: {score:.2f}\n", style=style)
+        
+        if len(match_data['all_candidates']) > 5:
+            text.append(f"  ... and {len(match_data['all_candidates']) - 5} more\n", style="dim")
+    
+    # Show validation warnings
+    if match_data.get('validation_warnings'):
+        text.append("\n⚠️  Validation Warnings:\n", style="yellow bold")
+        for warning in match_data['validation_warnings']:
+            text.append(f"  • {warning}\n", style="yellow")
+    
+    return text
+
+
 def format_progress_context():
     """
     Create a progress context for long-running operations.
@@ -559,18 +841,83 @@ def format_json_output(data: Dict[str, Any], title: str = "Results") -> None:
     console.print(panel)
 
 
-def display_schema_comparison_results(results: Dict[str, Any], show_json: bool = False):
+def display_schema_comparison_results(results: Dict[str, Any], show_json: bool = False,
+                                    entity_centric: bool = False, verbose: bool = False):
     """
     Display comprehensive schema comparison results.
     
     Args:
         results: Comparison results dictionary
         show_json: Whether to show raw JSON output
+        entity_centric: Whether to use entity-centric formatting
+        verbose: Whether to show verbose details
     """
+    # Handle entity-centric format
+    if entity_centric and 'entities' in results:
+        # Entity-centric view
+        print_header("Entity-Centric Schema Comparison", 
+                    "All information grouped by entity")
+        
+        # Display nodes
+        if results['entities'].get('nodes'):
+            console.print("\n[bold bright_blue]📦 NODES[/bold bright_blue]\n")
+            for node_data in results['entities']['nodes']:
+                panel = format_entity_centric_node(node_data)
+                console.print(panel)
+                console.print()
+                
+                # Show verbose match explanation if enabled
+                if verbose and node_data.get('match'):
+                    explanation = format_verbose_match_explanation(node_data)
+                    console.print(explanation)
+                    console.print()
+        
+        # Display relationships
+        if results['entities'].get('relationships'):
+            console.print("\n[bold bright_cyan]🔗 RELATIONSHIPS[/bold bright_cyan]\n")
+            for rel_data in results['entities']['relationships']:
+                panel = format_entity_centric_relationship(rel_data)
+                console.print(panel)
+                console.print()
+                
+                # Show verbose match explanation if enabled
+                if verbose and rel_data.get('match'):
+                    explanation = format_verbose_match_explanation(rel_data)
+                    console.print(explanation)
+                    console.print()
+        
+        # Show statistics if verbose
+        if verbose and 'statistics' in results:
+            stats_panel = format_matching_statistics(results['statistics'])
+            console.print(stats_panel)
+            console.print()
+            
+            # Show recommendations from statistics
+            if results.get('statistics_recommendations'):
+                console.print("[bold]📊 Statistics-Based Recommendations:[/bold]")
+                for rec in results['statistics_recommendations']:
+                    console.print(f"  • {rec}")
+                console.print()
+        
+        # Show summary at the end
+        if 'summary' in results:
+            summary_panel = format_comparison_summary(results)
+            console.print(summary_panel)
+            console.print()
+        
+        return  # Don't show standard format
+    
+    # Standard format
     # Summary panel
     summary_panel = format_comparison_summary(results)
     console.print(summary_panel)
     console.print()
+    
+    # Show statistics in verbose mode
+    if verbose and 'statistics' in results:
+        stats_panel = format_matching_statistics(results['statistics'])
+        console.print(stats_panel)
+        console.print()
     
     # Display new categorized recommendations by type if available
     if 'recommendations_by_type' in results:

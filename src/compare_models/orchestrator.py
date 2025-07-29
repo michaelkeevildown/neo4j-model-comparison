@@ -30,7 +30,9 @@ class SchemaComparator:
         self,
         standard_name: str = "transactions",
         similarity_threshold: float = 0.7,
-        use_adaptive: bool = True
+        use_adaptive: bool = True,
+        verbose: bool = False,
+        entity_centric: bool = False
     ) -> Dict[str, Any]:
         """
         Compare a database schema to a standard Neo4j model.
@@ -57,7 +59,9 @@ class SchemaComparator:
             existing_schema, 
             standard_schema,
             similarity_threshold=similarity_threshold,
-            use_adaptive=use_adaptive
+            use_adaptive=use_adaptive,
+            verbose=verbose,
+            entity_centric=entity_centric
         )
         
         return comparison_results
@@ -67,7 +71,9 @@ class SchemaComparator:
         existing_schema: GraphSchema,
         standard_schema: GraphSchema,
         similarity_threshold: float = 0.7,
-        use_adaptive: bool = True
+        use_adaptive: bool = True,
+        verbose: bool = False,
+        entity_centric: bool = False
     ) -> Dict[str, Any]:
         """
         Compare two GraphSchema objects directly.
@@ -88,7 +94,9 @@ class SchemaComparator:
             existing_schema,
             standard_schema,
             similarity_threshold=similarity_threshold,
-            use_adaptive=use_adaptive
+            use_adaptive=use_adaptive,
+            verbose=verbose,
+            entity_centric=entity_centric
         )
     
     def get_database_schema(self) -> GraphSchema:

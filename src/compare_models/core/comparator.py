@@ -1,10 +1,13 @@
 from typing import Dict, Any, Optional
 from ..common.models import GraphSchema
 from .similarity import FieldMatcher, MatchType
+from .formatters import EntityCentricFormatter, MatchingInspector
+from .statistics import StatisticsCollector
 
 
 def compare_schemas(existing_schema: GraphSchema, standard_schema: GraphSchema, 
-                   similarity_threshold: float = 0.7, use_adaptive: bool = True) -> Dict[str, Any]:
+                   similarity_threshold: float = 0.7, use_adaptive: bool = True,
+                   verbose: bool = False, entity_centric: bool = False) -> Dict[str, Any]:
     """
     Compares the existing schema against the standard schema and returns a comprehensive analysis.
     
@@ -20,14 +23,30 @@ def compare_schemas(existing_schema: GraphSchema, standard_schema: GraphSchema,
     # Initialize the field matcher with specified configuration
     matcher = FieldMatcher(
         use_adaptive=use_adaptive, 
-        similarity_threshold=similarity_threshold
+        similarity_threshold=similarity_threshold,
+        track_all_candidates=verbose,
+        verbose=verbose
     )
+    
+    # Initialize statistics collector if verbose
+    stats_collector = StatisticsCollector() if verbose else None
     
     # Perform the comprehensive schema comparison
     comparison_results = matcher.match_schemas(existing_schema, standard_schema)
     
     # Enhance the results with additional analysis
     enhanced_results = _enhance_comparison_results(comparison_results)
+    
+    # Collect statistics if enabled
+    if stats_collector:
+        _collect_statistics(comparison_results, stats_collector)
+        enhanced_results['statistics'] = stats_collector.get_summary()
+        enhanced_results['statistics_recommendations'] = stats_collector.get_recommendations()
+    
+    # Apply entity-centric formatting if requested
+    if entity_centric:
+        formatter = EntityCentricFormatter(verbose=verbose)
+        enhanced_results = formatter.format_comparison_results(enhanced_results)
     
     return enhanced_results
 
@@ -371,3 +390,76 @@ def get_similarity_engine_info() -> Dict[str, Any]:
             'default_threshold': 0.7
         }
     }
+
+
+def _collect_statistics(results: Dict[str, Any], stats_collector: StatisticsCollector) -> None:
+    """Collect statistics from comparison results."""
+    # Collect node match statistics
+    for node_match in results.get('node_matches', []):
+        if node_match.label_match:
+            stats_collector.record_node_match(
+                source_label=node_match.source_node.label,
+                target_label=node_match.target_node.label if node_match.target_node else None,
+                match_type=node_match.label_match.match_type,
+                similarity_score=node_match.label_match.similarity_result.score,
+                technique=node_match.label_match.similarity_result.technique,
+                metadata=node_match.label_match.similarity_result.metadata
+            )
+        else:
+            # No match
+            stats_collector.record_node_match(
+                source_label=node_match.source_node.label,
+                target_label=None,
+                match_type=MatchType.NO_MATCH,
+                similarity_score=0.0,
+                technique='none',
+                metadata={}
+            )
+        
+        # Collect property statistics
+        for prop_match in node_match.property_matches:
+            stats_collector.record_property_match(
+                source_prop=prop_match.source_field,
+                target_prop=prop_match.target_field,
+                match_type=prop_match.match_type,
+                similarity_score=prop_match.similarity_result.score,
+                technique=prop_match.similarity_result.technique,
+                parent_type='node',
+                parent_name=node_match.source_node.label,
+                metadata=prop_match.similarity_result.metadata
+            )
+    
+    # Collect relationship match statistics
+    for rel_match in results.get('relationship_matches', []):
+        if rel_match.type_match:
+            stats_collector.record_relationship_match(
+                source_type=rel_match.source_relationship.type,
+                target_type=rel_match.target_relationship.type if rel_match.target_relationship else None,
+                match_type=rel_match.type_match.match_type,
+                similarity_score=rel_match.type_match.similarity_result.score,
+                technique=rel_match.type_match.similarity_result.technique,
+                metadata=rel_match.type_match.similarity_result.metadata
+            )
+        else:
+            # No match
+            stats_collector.record_relationship_match(
+                source_type=rel_match.source_relationship.type,
+                target_type=None,
+                match_type=MatchType.NO_MATCH,
+                similarity_score=0.0,
+                technique='none',
+                metadata={}
+            )
+        
+        # Collect property statistics
+        for prop_match in rel_match.property_matches:
+            stats_collector.record_property_match(
+                source_prop=prop_match.source_field,
+                target_prop=prop_match.target_field,
+                match_type=prop_match.match_type,
+                similarity_score=prop_match.similarity_result.score,
+                technique=prop_match.similarity_result.technique,
+                parent_type='relationship',
+                parent_name=rel_match.source_relationship.type,
+                metadata=prop_match.similarity_result.metadata
+            )
